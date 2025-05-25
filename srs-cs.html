@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NR SRS CS 组合解析器</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-6xl bg-white shadow-xl rounded-2xl p-8">
+    <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">NR SRS CS 组合解析器</h1>
+
+    <label for="inputText" class="block text-gray-700 font-semibold mb-2">粘贴 message.txt 内容：</label>
+    <textarea id="inputText" rows="12" class="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="将 message.txt 内容粘贴到这里..."></textarea>
+
+    <div class="flex justify-center mt-6">
+      <button onclick="parseNR()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-xl shadow-md transition duration-200">解析组合</button>
+    </div>
+
+    <label for="outputText" class="block text-gray-700 font-semibold mt-8 mb-2">解析结果：</label>
+    <textarea id="outputText" rows="12" readonly class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 font-mono"></textarea>
+  </div>
+
+  <script>
+    function parseNR() {
+      const text = document.getElementById('inputText').value;
+
+      function getSrsCs(index) {
+        const start = text.indexOf("supportedBandCombinationList-v1540");
+        const stop = text.indexOf("srs-SwitchingTimeRequested");
+        if (start === -1 || stop === -1 || stop < start) return false;
+        const section = text.substring(start, stop);
+        const parts = section.split("bandList-v1540");
+        try {
+          return parts[index].includes("srs-CarrierSwitch");
+        } catch {
+          return false;
+        }
+      }
+
+      function getBandCombinations() {
+        const nrStart = text.indexOf("supportedBandListNR");
+        if (nrStart === -1) return [];
+        const nrSection = text.substring(nrStart);
+        const start = nrSection.indexOf("supportedBandCombinationList");
+        const stop = nrSection.indexOf("appliedFreqBandListFilter");
+        if (start === -1 || stop === -1 || stop < start) return [];
+        const section = nrSection.substring(start, stop);
+        const combinations = section.split("[0] -> nr");
+
+        const allCombos = [];
+        combinations.forEach((item, bandIndex) => {
+          const combo = [];
+          const bands = item.split("bandNR : ");
+          if (bands[0] === item) return;
+
+          bands.forEach((part, i) => {
+            if (i === 0) return;
+            try {
+              const lines = part.split(/\r?\n/);
+              const bandNum = parseInt(lines[0].trim());
+              if (isNaN(bandNum)) return;
+
+              let DL = "", UL = "";
+              lines.forEach(line => {
+                if (line.includes("ca-BandwidthClassDL-NR")) {
+                  DL = line.split(":")[1].trim();
+                }
+                if (line.includes("ca-BandwidthClassUL-NR")) {
+                  UL = line.split(":")[1].trim();
+                }
+              });
+              combo.push({ bandNum, DL, UL });
+            } catch {}
+          });
+
+          allCombos.push({ combo, bandIndex });
+        });
+
+        return allCombos;
+      }
+
+      const result = [];
+      const combos = getBandCombinations();
+
+      combos.forEach(({ combo, bandIndex }) => {
+        if (combo.length === 0 || combo[0].bandNum === 0) return;
+
+        let line = "";
+        combo.forEach(b => {
+          line += `${b.bandNum}${b.DL}${b.UL}+`;
+        });
+        line += `SRSCS:${getSrsCs(bandIndex)}`;
+        result.push(line.replace(/\s/g, ""));
+      });
+
+      document.getElementById('outputText').value = result.join("\n");
+    }
+  </script>
+</body>
+</html>
